@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == "ebrahim@avarental.ae" && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidDriver(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 128 &&
+             data.bus is string && data.bus.size() <= 64 &&
+             data.pin is string && data.pin.size() <= 16 &&
+             (data.status == 'active' || data.status == 'locked');
+    }
+
+    function isValidTrip(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.driverId is string && data.driverId.size() <= 128 &&
+             data.driverName is string && data.driverName.size() <= 128 &&
+             data.bus is string && data.bus.size() <= 64 &&
+             (data.status == 'in_progress' || data.status == 'completed') &&
+             data.createdAt is number;
+    }
+
+    function isValidExtra(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.driverId is string && data.driverId.size() <= 128 &&
+             data.driverName is string && data.driverName.size() <= 128 &&
+             data.bus is string && data.bus.size() <= 64 &&
+             data.createdAt is number;
+    }
+
+    function isValidExpense(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.driverId is string && data.driverId.size() <= 128 &&
+             data.driverName is string && data.driverName.size() <= 128 &&
+             data.bus is string && data.bus.size() <= 64 &&
+             data.type is string && data.type.size() <= 64 &&
+             data.amount is number &&
+             data.createdAt is number;
+    }
+
+    match /drivers/{driverId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(driverId) && isValidDriver(incoming());
+      allow update: if (isAdmin() || isSignedIn()) && isValidId(driverId) && isValidDriver(incoming());
+      allow delete: if isAdmin() && isValidId(driverId);
+    }
+
+    match /trips/{tripId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(tripId) && isValidTrip(incoming());
+      allow update: if isSignedIn() && isValidId(tripId) && isValidTrip(incoming()) && (
+        isAdmin() || incoming().driverId == existing().driverId
+      );
+      allow delete: if isAdmin() && isValidId(tripId);
+    }
+
+    match /extras/{extraId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(extraId) && isValidExtra(incoming());
+      allow update: if isSignedIn() && isValidId(extraId) && isValidExtra(incoming()) && (
+        isAdmin() || incoming().driverId == existing().driverId
+      );
+      allow delete: if isAdmin() && isValidId(extraId);
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming());
+      allow update: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) && (
+        isAdmin() || incoming().driverId == existing().driverId
+      );
+      allow delete: if isAdmin() && isValidId(expenseId);
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidId(adminId);
+    }
+
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

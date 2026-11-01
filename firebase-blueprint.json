@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "Driver": {
+      "title": "Driver",
+      "description": "Registered driver record in the fleet",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "bus": { "type": "string", "maxLength": 64 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "pin": { "type": "string", "maxLength": 16 },
+        "status": { "type": "string", "enum": ["active", "locked"] },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "bus", "pin", "status"]
+    },
+    "Trip": {
+      "title": "Trip",
+      "description": "A scheduled or regular bus shift record with stages and odometer readings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "driverName": { "type": "string", "maxLength": 128 },
+        "bus": { "type": "string", "maxLength": 64 },
+        "busSource": { "type": "string", "enum": ["auto", "manual"] },
+        "status": { "type": "string", "enum": ["in_progress", "completed"] },
+        "startOdometer": { "type": "number" },
+        "endOdometer": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "completedAt": { "type": "number" },
+        "closedBy": { "type": "string", "maxLength": 32 },
+        "closedEarly": { "type": "boolean" },
+        "stages": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "driverId", "driverName", "bus", "status", "createdAt"]
+    },
+    "ExtraTrip": {
+      "title": "ExtraTrip",
+      "description": "An ad-hoc or extra route logged by a driver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "driverName": { "type": "string", "maxLength": 128 },
+        "bus": { "type": "string", "maxLength": 64 },
+        "startKm": { "type": "number" },
+        "endKm": { "type": "number" },
+        "distance": { "type": "number" },
+        "note": { "type": "string", "maxLength": 500 },
+        "time": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "driverId", "driverName", "bus", "createdAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Fuel, maintenance, or petty expense logged by driver or admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "driverId": { "type": "string", "maxLength": 128 },
+        "driverName": { "type": "string", "maxLength": 128 },
+        "bus": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "maxLength": 64 },
+        "mode": { "type": "string", "enum": ["calc", "direct"] },
+        "liters": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "amount": { "type": "number" },
+        "note": { "type": "string", "maxLength": 500 },
+        "receipt": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "driverId", "driverName", "bus", "type", "amount", "createdAt"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Admin authorization mapping for dispatchers and fleet managers",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "superadmin"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/drivers/{driverId}": {
+      "schema": { "$ref": "#/entities/Driver" },
+      "description": "Collection of all drivers and their credentials"
+    },
+    "/trips/{tripId}": {
+      "schema": { "$ref": "#/entities/Trip" },
+      "description": "Collection of all driver trips, shifts, and checkpoint logs"
+    },
+    "/extras/{extraId}": {
+      "schema": { "$ref": "#/entities/ExtraTrip" },
+      "description": "Collection of extra trips logged"
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Collection of fuel and maintenance expenses"
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "List of authorized admin UIDs"
+    }
+  }
+}

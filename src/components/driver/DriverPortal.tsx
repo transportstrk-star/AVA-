@@ -20,6 +20,7 @@ import { Icon } from '../Icon';
 import { NetworkBadge } from '../NetworkBadge';
 import { ReceiptViewer } from '../ReceiptViewer';
 import { WatermarkCamera } from '../WatermarkCamera';
+import { syncTripToFirestore, syncExtraToFirestore, syncExpenseToFirestore } from '../../services/firebase';
 
 interface DriverPortalProps {
   state: FleetState;
@@ -166,6 +167,7 @@ export function DriverPortal({
       saveState(next);
       return next;
     });
+    syncTripToFirestore(trip).catch(() => {});
 
     setActiveTrip(trip);
     setSetupMode(false);
@@ -229,37 +231,25 @@ export function DriverPortal({
     const recorded = Object.keys(activeTrip.stages || {}).length;
     const closedEarly = recorded < STAGES.length;
 
+    const finishedTrip: Trip = {
+      ...activeTrip,
+      endOdometer: hasEndOdo ? endOdoNum : null,
+      endedAt,
+      status: 'completed' as const,
+      completedAt: endedAt,
+      closedBy: hasEndOdo ? ('end_odo' as const) : ('no_odo' as const),
+      closedEarly,
+    };
+
     setState((s) => {
-      const trips = s.trips.map((t) => {
-        if (t.id !== activeTrip.id) return t;
-        return {
-          ...t,
-          endOdometer: hasEndOdo ? endOdoNum : null,
-          endedAt,
-          status: 'completed' as const,
-          completedAt: endedAt,
-          closedBy: hasEndOdo ? ('end_odo' as const) : ('no_odo' as const),
-          closedEarly,
-        };
-      });
+      const trips = s.trips.map((t) => (t.id === activeTrip.id ? finishedTrip : t));
       const next = { ...s, trips };
       saveState(next);
       return next;
     });
+    syncTripToFirestore(finishedTrip).catch(() => {});
 
-    setActiveTrip((prev) =>
-      prev
-        ? {
-            ...prev,
-            endOdometer: hasEndOdo ? endOdoNum : null,
-            endedAt,
-            status: 'completed' as const,
-            completedAt: endedAt,
-            closedBy: hasEndOdo ? ('end_odo' as const) : ('no_odo' as const),
-            closedEarly,
-          }
-        : prev
-    );
+    setActiveTrip(finishedTrip);
 
     enqueue({
       type: 'trip_end',
@@ -313,34 +303,24 @@ export function DriverPortal({
       timestamp: photoData.timestamp,
     };
 
+    const updatedStages = { ...activeTrip.stages, [stageKey]: stageData };
+    const done = STAGES.every((st) => updatedStages[st.key]);
+    const updatedTrip: Trip = {
+      ...activeTrip,
+      stages: updatedStages,
+      status: done ? ('completed' as const) : ('in_progress' as const),
+      completedAt: done ? Date.now() : null,
+    };
+
     setState((s) => {
-      const trips = s.trips.map((t) => {
-        if (t.id !== activeTrip.id) return t;
-        const stages = { ...t.stages, [stageKey]: stageData };
-        const done = STAGES.every((st) => stages[st.key]);
-        return {
-          ...t,
-          stages,
-          status: done ? ('completed' as const) : ('in_progress' as const),
-          completedAt: done ? Date.now() : null,
-        };
-      });
+      const trips = s.trips.map((t) => (t.id === activeTrip.id ? updatedTrip : t));
       const next = { ...s, trips };
       saveState(next);
       return next;
     });
+    syncTripToFirestore(updatedTrip).catch(() => {});
 
-    setActiveTrip((prev) => {
-      if (!prev) return prev;
-      const stages = { ...prev.stages, [stageKey]: stageData };
-      const done = STAGES.every((st) => stages[st.key]);
-      return {
-        ...prev,
-        stages,
-        status: done ? ('completed' as const) : ('in_progress' as const),
-        completedAt: done ? Date.now() : null,
-      };
-    });
+    setActiveTrip(updatedTrip);
 
     setCameraOpen(null);
     setOdometerInput('');
@@ -360,8 +340,22 @@ export function DriverPortal({
       const batch = items || queue;
       if (!online || batch.length === 0) return;
       setSyncing(true);
-      await new Promise((r) => setTimeout(r, 800 + Math.random() * 400));
-      console.log('[FleetShift] Syncing queue to cloud (simulated):', batch);
+      try {
+        for (const item of batch) {
+          if (item.type === 'trip_start' || item.type === 'trip_stage' || item.type === 'trip_end') {
+            const tripToSync = state.trips.find((t) => t.id === (item.tripId || item.data?.id));
+            if (tripToSync) await syncTripToFirestore(tripToSync).catch(() => {});
+          } else if (item.type === 'extra') {
+            const extraToSync = state.extras.find((x) => x.id === item.data?.id);
+            if (extraToSync) await syncExtraToFirestore(extraToSync).catch(() => {});
+          } else if (item.type === 'expense') {
+            const expToSync = state.expenses.find((e) => e.id === item.data?.id);
+            if (expToSync) await syncExpenseToFirestore(expToSync).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn('Queue flush to Firestore:', err);
+      }
       const sent = new Set(batch.map((b) => b.id));
       setQueue((q) => {
         const rest = q.filter((x) => !sent.has(x.id));
@@ -369,9 +363,9 @@ export function DriverPortal({
         return rest;
       });
       setSyncing(false);
-      showToast(`Synced ${batch.length} item(s)`);
+      showToast(`Cloud synced ${batch.length} item(s)`);
     },
-    [online, queue, setQueue]
+    [online, queue, setQueue, state]
   );
 
   const enqueue = (item: any) => {
@@ -433,6 +427,7 @@ export function DriverPortal({
       saveState(next);
       return next;
     });
+    syncExtraToFirestore(extra).catch(() => {});
 
     enqueue({ type: 'extra', data: extra });
     setExtraForm({ startKm: '', endKm: '', note: '', time: '' });
@@ -463,7 +458,11 @@ export function DriverPortal({
           ...state,
           expenses: state.expenses.map((x) => (x.id === targetId ? { ...x, receipt } : x)),
         };
-        if (persistState(next)) showToast('Receipt updated');
+        if (persistState(next)) {
+          const updatedExp = next.expenses.find((x) => x.id === targetId);
+          if (updatedExp) syncExpenseToFirestore(updatedExp).catch(() => {});
+          showToast('Receipt updated');
+        }
         receiptTargetRef.current = null;
       } else {
         setReceiptDraft(receipt);
@@ -534,6 +533,7 @@ export function DriverPortal({
 
     const { receipt, ...queuePayload } = exp;
     if (!persistState({ ...state, expenses: [exp, ...state.expenses] })) return;
+    syncExpenseToFirestore(exp).catch(() => {});
 
     enqueue({
       type: 'expense',

@@ -10,6 +10,7 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { DriverPortal } from './components/driver/DriverPortal';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { Icon } from './components/Icon';
+import { syncWithFirestore, testConnection } from './services/firebase';
 
 export default function App() {
   const [state, setState] = useState<FleetState>(loadState);
@@ -18,6 +19,20 @@ export default function App() {
   const [online, setOnline] = useState<boolean>(true);
   const [queue, setQueue] = useState<QueueItem[]>(loadQueue);
   const [showPortalSwitcher, setShowPortalSwitcher] = useState(false);
+  const [firestoreReady, setFirestoreReady] = useState<boolean | null>(null);
+
+  // Initial connection test to Firestore on app boot
+  useEffect(() => {
+    testConnection().then((ok) => {
+      setFirestoreReady(ok);
+    });
+
+    // Real-time Firestore sync
+    const unsubscribe = syncWithFirestore(setState);
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Persist state to local storage whenever it changes
   useEffect(() => {
@@ -45,50 +60,62 @@ export default function App() {
     <div className="relative min-h-screen bg-slate-950 font-sans text-slate-100 antialiased selection:bg-sky-500 selection:text-white">
       {/* Quick Portal Switcher banner for seamless previewing & testing */}
       {role && (
-        <div className="fixed top-2 right-2 z-40">
-          <button
-            onClick={() => setShowPortalSwitcher((v) => !v)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-[10px] font-semibold text-slate-300 hover:text-white hover:border-slate-600 shadow-lg backdrop-blur cursor-pointer transition-all"
-            title="Switch portal view"
-          >
-            <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-            <span>{role === 'driver' ? 'Driver View' : 'Admin View'}</span>
-            <Icon name="ChevronDown" size={12} />
-          </button>
-
-          {showPortalSwitcher && (
-            <div className="absolute right-0 mt-1.5 w-52 p-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 text-xs fade-in">
-              <div className="text-[10px] text-slate-500 font-semibold px-2 py-1 uppercase tracking-wider">
-                Switch Portal
-              </div>
-              <button
-                onClick={() => switchToDriver()}
-                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer transition-colors ${
-                  role === 'driver' ? 'bg-sky-500/20 text-sky-300 font-semibold' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Icon name="User" size={14} className="text-sky-400" />
-                <span>Driver Portal</span>
-              </button>
-              <button
-                onClick={switchToAdmin}
-                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer transition-colors ${
-                  role === 'admin' ? 'bg-violet-500/20 text-violet-300 font-semibold' : 'text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                <Icon name="Shield" size={14} className="text-violet-400" />
-                <span>Admin Control</span>
-              </button>
-              <div className="my-1 border-t border-slate-800" />
-              <button
-                onClick={logout}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-red-400 hover:bg-red-500/10 cursor-pointer"
-              >
-                <Icon name="LogOut" size={14} />
-                <span>Sign Out / Launcher</span>
-              </button>
+        <div className="fixed top-2 right-2 z-40 flex items-center gap-2">
+          {firestoreReady && (
+            <div
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-emerald-500/30 text-[10px] font-semibold text-emerald-400 backdrop-blur"
+              title="Cloud Firestore Connected"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Cloud Firestore</span>
             </div>
           )}
+
+          <div className="relative">
+            <button
+              onClick={() => setShowPortalSwitcher((v) => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-[10px] font-semibold text-slate-300 hover:text-white hover:border-slate-600 shadow-lg backdrop-blur cursor-pointer transition-all"
+              title="Switch portal view"
+            >
+              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+              <span>{role === 'driver' ? 'Driver View' : 'Admin View'}</span>
+              <Icon name="ChevronDown" size={12} />
+            </button>
+
+            {showPortalSwitcher && (
+              <div className="absolute right-0 mt-1.5 w-52 p-2 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 text-xs fade-in">
+                <div className="text-[10px] text-slate-500 font-semibold px-2 py-1 uppercase tracking-wider">
+                  Switch Portal
+                </div>
+                <button
+                  onClick={() => switchToDriver()}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer transition-colors ${
+                    role === 'driver' ? 'bg-sky-500/20 text-sky-300 font-semibold' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon name="User" size={14} className="text-sky-400" />
+                  <span>Driver Portal</span>
+                </button>
+                <button
+                  onClick={switchToAdmin}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left cursor-pointer transition-colors ${
+                    role === 'admin' ? 'bg-violet-500/20 text-violet-300 font-semibold' : 'text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon name="Shield" size={14} className="text-violet-400" />
+                  <span>Admin Control</span>
+                </button>
+                <div className="my-1 border-t border-slate-800" />
+                <button
+                  onClick={logout}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-red-400 hover:bg-red-500/10 cursor-pointer"
+                >
+                  <Icon name="LogOut" size={14} />
+                  <span>Sign Out / Launcher</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
