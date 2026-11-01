@@ -1,0 +1,6 @@
+{
+  "name": "FleetShift — AVA Transport",
+  "description": "Offline-first driver shift logger & fleet admin control center with watermarked camera verification, ODO tracking, GPS stamps, and receipt uploads.",
+  "requestFramePermissions": ["camera", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
